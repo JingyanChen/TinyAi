@@ -9,3 +9,4 @@ but moreover ..
 Author wants transplant machine learning algorithms into embedded platform(MCU ARM Linux etc). That is why i use C/C++ as primary programming language.
 
 Some code will transplanted form kaldi or other famous open-source respority.
+
