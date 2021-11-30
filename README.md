@@ -1,4 +1,4 @@
-What is TinyAi?
+## What is TinyAi?
 
 TinyAi is C/C++ Code for machine learning with corresponding study notes.
 Author want to learning classic learning algorithms , Coding in C/C++ , wirte study notes at same time to consolidate the algorithms that i have learned.
@@ -10,3 +10,18 @@ Author wants transplant machine learning algorithms into embedded platform(MCU A
 
 Some code will transplanted form kaldi or other famous open-source respority.
 
+## File Structure
+```
+TinyAi
+├── component
+├── note
+│   ├── logistics regression
+|       ├── blog
+|       ├── data
+|       ├── pic
+|       ├── src 
+|           ├── C++
+|           ├── python
+|           ├── scilab
+│   ├── other topic
+```

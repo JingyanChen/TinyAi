@@ -117,7 +117,7 @@ public:
         label = label_instance;
         w = w_instance;
 
-        printf("%d,%d", m, n);
+        //printf("%d,%d", m, n);
 
         ch = fgetc(fp);
 
@@ -147,7 +147,7 @@ public:
 
             ch = fgetc(fp);
         }
-        look(label);
+        //look(label);
         fclose(fp);
     }
 
