@@ -20,7 +20,7 @@ ${W^l}_{jk}$  : 代表$l-1$层的第$k$个神经元到$l$层第$j$个神经元�
 
 例如，上图${W^3}_{24}$代表着第二层的第四个神经元到第三层的第二个神经元的权重系数。
 
-最开始看这个式子会显得陌生，但是多看看就熟悉了，这个符号的一个特点是j和k的顺序，记住j是输入，k是输出，一个系统肯定是先输入后输出，就可以看清楚这个顺序关系。文章后面会继续谈到使用这个顺序的原因。
+最开始看这个式子会显得陌生，但是多看看就熟悉了，这个符号的一个特点是j和k的顺序，记住k是输入，j是输出。文章后面会继续谈到使用这个顺序的原因。
 
 我们接下来使用类似的符号来表示网络的偏置参数以及激活函数输出。
 
@@ -142,6 +142,87 @@ $\delta^l$包含了第l层的所有神经元误差信息。
 这个是书上作者的原话，但是我并不大相信这其中的难度，我们继续！
 
 
-$$\delta^L_j = \frac{\partial{C}}{\partial{a^L_j}}\sigma'(z^L_j)$$
+$$\delta^L_j = \frac{\partial{C}}{\partial{a^L_j}}\sigma'(z^L_j)  \ \ (BP1)$$
 
 这是一个自然的表达，左边的第一项$\frac{\partial{C}}{\partial{a^L_j}}$指导了L层第j个神经元接收到变化后，损失函数下降的速度。第二项$\sigma'(z^L_j)$指示了当激活函数获得$z_j^L$变化后的变化。
+
+继续观察BP1的公式，可以发现这个式子非常好算，在正向传播的过程中我们已经把$z^L_j$算好了，只需要非常少的计算就可以获得$\sigma'(z^L_j)$，激活函数的导数一般都是非常好算的。
+
+那么接下来最大的难题就是$\frac{\partial{C}}{\partial{a^L_j}}$这一项的确定，这一项的确定肯定离不开我们定义的损失函数C，如果我们的损失函数已经给出来了，那么计算$\frac{\partial{C}}{\partial{a^L_j}}$也没有什么难的。
+
+本文的例子使用的是"quadratic cost function"
+
+$$C=\frac{1}{2}\sum_j{(y_i-a^L_j)^2}$$
+
+$$\frac{\partial{C}}{\partial{a^L_j}} = \sum_j{(a^L_j-y_i)}$$
+
+BP1是用求和的方式表达$\delta^L_j$,显得非常不简洁，所以依照上文常用的习惯，会使用矩阵化的方式来表达这个公式。把循环用的变量j给去掉。
+
+$$\delta^L = {\nabla}_a C \bigodot \sigma'(z^L) \ \ (BP1a)$$
+
+${\nabla}_a C$ 是$\frac{\partial{C}}{\partial{a^L_j}}$的矩阵形式。把${\nabla}_a C$理解为某一层所有神经元激活输出变化对于最终的损失函数作用的变化率。如果变化率越小，说明这一层神经元对最终的损失函数减小用处不大，变化率越大，作用越明显。BP1a和BP1两个式子是等价的。我们今后将会用BP1a的矩阵形式公式继续我们的推导。
+
+根据上文求得的损失函数的偏导以及BP1a，连立得到
+
+$$\delta^L = (a^L-y) \bigodot \sigma'(z^L) \ \ (30)$$
+
+
+看到上述的式子都是有很好的矩阵形式，可以方便的使用一些第三方的矩阵库函数进行运算（Numpy）。
+
+**用下一层的变化$\delta^{l+1}$表示上一层的$\delta^l$的公式。**
+
+反向误差传播，肯定是从最后输出层一步一步往输入层传播，所以如果能推导出$\delta^{l+1}$到$\delta^{l}$的递推公式就可以给出传播的计算方法。
+
+公式如下
+
+$$\delta^l=({(w^{l+1})}^T\delta^{l+1})\bigodot \sigma'(z^l)$$
+
+推导过程如下
+$$\delta^l_j = \frac{\partial{C}}{\partial{z^l_j}}$$
+
+（这一步是根据$\delta^l_j$的定义得到的）
+$$=\sum_k \frac{\partial{C}}{\partial{z^{l+1}_k}} \frac{\partial{z^{l+1}_k}}{\partial{a^l_j}}\frac{\partial{a^l_j}}{\partial{z^l_j}}$$
+
+（链式求导法则，从数学上来看都是能约分的，没问题）
+$$=\sum_k  \delta^{l+1}_k\frac{\partial{z^{l+1}_k}}{\partial{a^l_j}}\frac{\partial{a^l_j}}{\partial{z^l_j}}$$
+
+（依旧是根据$\delta^{l+1}_j$的定义推导出来的，显然第一项就是$\delta^{l+1}_j$）
+
+
+根据正向传播的法则
+
+$$z^{l+1}_k = w^{l+1}_{kj} a^{l}_j+b^{l+1}_k$$
+
+并且
+
+$$\sigma'(z^l_j) = \frac{\partial{a^l_j}}{\partial{z^l_j}}$$
+
+将上述两个式子代入证得
+
+$$\delta^l=({(w^{l+1})}^T\delta^{l+1})\bigodot \sigma'(z^l) \ \ (BP2)$$
+
+观察这个式子，如果我们得知了第l+1层的$\delta$那么就可以顺势推导出他的上一层$\delta$，只不过使用了正向传播中的偏置参数以及权重参数。这个公式就是真正意义上的反向传播，从最后一层输出层误差一直一步一步把这个误差往前传播。
+
+配合BP1与BP2两个式子，我们可以计算任意层l的误差$\delta^l$，然后通过BP2，将这个误差向前传播到任意层l-1。有了l-1层后，往后可以推导到l-2层依次类推，得到每一层的误差$\delta^l$。
+
+**偏置b的梯度与$\delta$的计算公式**
+
+偏置参数$b$的偏导就完全等于这一层的误差$\delta$
+
+$$\frac{\partial{C}}{\partial{b^l_j}} = {\delta}^l_j \ \ (BP3)$$
+
+推导过程
+
+$$\frac{\partial{C}}{\partial{b^l_j}}
+=\frac{\partial{C}}{\partial{z^l_j}} \frac{\partial{z^l_j}}{\partial{b^l_j}}={\delta}^l_j \frac{\partial{w^{l}_{kj} a^{l-1}_j+b^{l}_k}}{\partial{b^l_j}} = {\delta}^l_j$$
+
+**权重w的梯度与$\delta$的计算公式**
+
+$$\frac{\partial{C}}{\partial{w^l_{jk}}} = a^{l-1}_k {\delta}^l_j$$
+
+推导过程
+
+$$\frac{\partial{C}}{\partial{w^l_{jk}}}
+=\frac{\partial{C}}{\partial{z^l_j}} \frac{\partial{z^l_j}}{\partial{w^l_{jk}}}={\delta}^l_j \frac{\partial{w^{l}_{jk} a^{l-1}_k+b^{l}_k}}{\partial{w^l_{jk}}} = {a^{l-1}_k\delta}^l_j$$
+
+观察这个式子，我们给出了权重梯度与$\delta$之间的关系
