@@ -211,7 +211,7 @@ public:
 
         /* random initial w */
         std::default_random_engine e(time(0));
-        std::normal_distribution<double> n(0, 0.1);
+        std::normal_distribution<double> n(0, 0.07);
 
         for (i = 0; i < (int)wih.rows(); i++) {
             for (j = 0; j < (int)wih.cols(); j++) {
@@ -248,12 +248,13 @@ public:
     {
         /* forward-propagating calculate error */
         uint32_t i = 0, j = 0;
-
+        uint8_t rlt = 0;
+        double max = 0;
         /* set *data into martix data structure */
         MatrixXd dataM = MatrixXd::Zero(inode, 1);
 
         for (i = 0; i < inode; i++) {
-            dataM(i, 0) = data[i];
+            dataM(i, 0) = (double)((double)data[i] / (double)255.0 * (double)0.99) + (double)0.01;
         }
 
         MatrixXd a1 = MatrixXd::Zero(hnode, 1);
@@ -275,8 +276,13 @@ public:
         for (i = 0; i < a2.rows(); i++) {
             for (j = 0; j < a2.cols(); j++) {
                 a2(i, j) = sigmod_function(a2(i, j));
+                if (a2(i, j) > max) {
+                    max = a2(i, j);
+                    rlt = i;
+                }
             }
         }
+        return rlt;
     }
 
     /* study a data */
@@ -290,7 +296,7 @@ public:
         MatrixXd dataM = MatrixXd::Zero(inode, 1);
 
         for (i = 0; i < inode; i++) {
-            dataM(i, 0) = data[i];
+            dataM(i, 0) = (double)((double)data[i] / (double)255.0 * (double)0.99) + (double)0.01;
         }
 
         MatrixXd a1 = MatrixXd::Zero(hnode, 1);
@@ -321,7 +327,10 @@ public:
         MatrixXd labelM = MatrixXd::Zero(onode, 1);
 
         /* set label format into output format */
-        labelM(*label, 0) = 1;
+        for (i = 0; i < onode; i++) {
+            labelM(i, 0) = 0.01;
+        }
+        labelM(*label, 0) = 0.99;
 
         /*  layer 2 error */
         MatrixXd delta2 = MatrixXd::Zero(onode, 1);
@@ -357,7 +366,7 @@ public:
             }
         }
 
-        dwih = delta2 * labelM.transpose();
+        dwih = delta2 * dataM.transpose();
 
         //adjust wih and who
         for (i = 0; i < dwih.rows(); i++) {
@@ -378,7 +387,8 @@ public:
 int main()
 {
     uint32_t i = 0, tim = 0;
-    uint32_t epochs = 5;
+    uint32_t epochs = 2;
+    uint8_t label = 0, forcast = 0;
 
     image_data *train_image = new image_data("./train-images-idx3-ubyte");
     image_data *test_image = new image_data("./t10k-images-idx3-ubyte");
@@ -388,24 +398,23 @@ int main()
 
     //math_lib_test();
 
-    trainer *t = new trainer(28 * 28, 200, 10, 0.1);
+    trainer *t = new trainer(28 * 28, 200, 10, 0.05);
     for (tim = 0; tim < epochs; tim++) {
         for (i = 0; i < train_image->image_number; i++) {
             printf("loss=%lf %d/%d(%d)\r\n", t->train(train_image->get_pic(i), train_label->get_label(i)), i, train_image->image_number, tim);
-
-            //printf("%d/%d\r\n", i, train_image->image_number);
         }
     }
 
     uint32_t right_num = 0;
     for (i = 0; i < test_image->image_number; i++) {
-        if (t->forecast(test_image->get_pic(i)) == *test_label->get_label(i)) {
+        label = *test_label->get_label(i);
+        forcast = t->forecast(test_image->get_pic(i));
+        if (label == forcast) {
             right_num++;
-            printf("c");
         } else {
-            printf("e");
+            printf("correct = %d , forecast = %d error\r\n", label, forcast);
         }
     }
 
-    printf("\r\n score = %f\r\n", float(right_num) / (float)test_image->image_number);
+    printf("correct = %d , error = %d rate = %lf\r\n", right_num, test_image->image_number - right_num, (double)right_num / (double)test_image->image_number);
 }

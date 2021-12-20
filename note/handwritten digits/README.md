@@ -314,4 +314,306 @@ void math_lib_test(void)
 ```
 ### 步骤3，创建基于反向传播的训练算法，利用训练集进行训练
 
+代码首先创建了一个trainer类型，抽象一个训练者。
+创建训练者时，需要告知训练者神经网络的节点信息以及学习率。
+
+下述代码构建了一个trainer的图纸，具体算法原理可以看我以前的《嵌入式AI xxx》系列文章。这里的激活函数选择的是sigmod函数，暂时还没有用到tanh或者relu，后面会逐步尝试。
+
+权重初始化采用了C++的正态随即随方法，随机初始化了权重矩阵初始值。
+``` C++
+class trainer {
+public:
+    uint32_t inode;
+    uint32_t hnode;
+    uint32_t onode;
+    double learnRate;
+
+    //result
+    MatrixXd wih;
+    MatrixXd who;
+
+    trainer(uint32_t _inode, uint32_t _hnode, uint32_t _onode, double _learnRate)
+    {
+        uint32_t i = 0, j = 0;
+        inode = _inode;
+        hnode = _hnode;
+        onode = _onode;
+        learnRate = _learnRate;
+
+        /* wih and who are trainer's outputs*/
+        /* create wih and who space */
+        wih = MatrixXd::Zero(hnode, inode);
+        who = MatrixXd::Zero(onode, hnode);
+
+        /* random initial w */
+        std::default_random_engine e(time(0));
+        std::normal_distribution<double> n(0, 0.07);
+
+        for (i = 0; i < (int)wih.rows(); i++) {
+            for (j = 0; j < (int)wih.cols(); j++) {
+                wih(i, j) = n(e);
+            }
+        }
+        for (i = 0; i < (int)who.rows(); i++) {
+            for (j = 0; j < (int)who.cols(); j++) {
+                who(i, j) = n(e);
+            }
+        }
+    }
+    void shape(MatrixXd mat)
+    {
+        printf("rows = %d , cols = %d", (int)mat.rows(), (int)mat.cols());
+    }
+    void look(MatrixXd mat)
+    {
+        int i = 0, j = 0;
+        for (i = 0; i < (int)mat.rows(); i++) {
+            printf("\n");
+            for (j = 0; j < (int)mat.cols(); j++) {
+                printf("%lf ", mat(i, j));
+            }
+        }
+    }
+
+    double sigmod_function(double x)
+    {
+        return 1.0 / (1 + exp(-x));
+    }
+
+    uint8_t forecast(uint8_t *data)
+    {
+        /* forward-propagating calculate error */
+        uint32_t i = 0, j = 0;
+        uint8_t rlt = 0;
+        double max = 0;
+        /* set *data into martix data structure */
+        MatrixXd dataM = MatrixXd::Zero(inode, 1);
+
+        for (i = 0; i < inode; i++) {
+            dataM(i, 0) = (double)((double)data[i] / (double)255.0 * (double)0.99) + (double)0.01;
+        }
+
+        MatrixXd a1 = MatrixXd::Zero(hnode, 1);
+        MatrixXd a2 = MatrixXd::Zero(onode, 1);
+        /* first layer propagating */
+        a1 = wih * dataM;
+
+        /* active */
+        for (i = 0; i < a1.rows(); i++) {
+            for (j = 0; j < a1.cols(); j++) {
+                a1(i, j) = sigmod_function(a1(i, j));
+            }
+        }
+
+        /* second layer propagating */
+        a2 = who * a1;
+
+        /* active */
+        for (i = 0; i < a2.rows(); i++) {
+            for (j = 0; j < a2.cols(); j++) {
+                a2(i, j) = sigmod_function(a2(i, j));
+                if (a2(i, j) > max) {
+                    max = a2(i, j);
+                    rlt = i;
+                }
+            }
+        }
+        return rlt;
+    }
+
+    /* study a data */
+    double train(uint8_t *data, uint8_t *label)
+    {
+        double loss = 0;
+        /* forward-propagating calculate error */
+        uint32_t i = 0, j = 0;
+
+        /* set *data into martix data structure */
+        MatrixXd dataM = MatrixXd::Zero(inode, 1);
+
+        for (i = 0; i < inode; i++) {
+            dataM(i, 0) = (double)((double)data[i] / (double)255.0 * (double)0.99) + (double)0.01;
+        }
+
+        MatrixXd a1 = MatrixXd::Zero(hnode, 1);
+        MatrixXd a2 = MatrixXd::Zero(onode, 1);
+        /* first layer propagating */
+        a1 = wih * dataM;
+
+        /* active */
+        for (i = 0; i < a1.rows(); i++) {
+            for (j = 0; j < a1.cols(); j++) {
+                a1(i, j) = sigmod_function(a1(i, j));
+            }
+        }
+
+        /* second layer propagating */
+        a2 = who * a1;
+
+        /* active */
+        for (i = 0; i < a2.rows(); i++) {
+            for (j = 0; j < a2.cols(); j++) {
+                a2(i, j) = sigmod_function(a2(i, j));
+            }
+        }
+
+        /*BP*/
+
+        /* set *label into martix data structure */
+        MatrixXd labelM = MatrixXd::Zero(onode, 1);
+
+        /* set label format into output format */
+        for (i = 0; i < onode; i++) {
+            labelM(i, 0) = 0.01;
+        }
+        labelM(*label, 0) = 0.99;
+
+        /*  layer 2 error */
+        MatrixXd delta2 = MatrixXd::Zero(onode, 1);
+
+        for (i = 0; i < delta2.rows(); i++) {
+            for (j = 0; j < delta2.cols(); j++) {
+                delta2(i, j) = labelM(i, j) - a2(i, j);
+                loss += delta2(i, j);
+            }
+        }
+
+        /*  layer 1 error */
+        MatrixXd delta1 = MatrixXd::Zero(hnode, 1);
+
+        delta1 = who.transpose() * delta2;
+
+        /* cal dwih */
+        MatrixXd dwih = MatrixXd::Zero(hnode, inode);
+        MatrixXd dwho = MatrixXd::Zero(onode, hnode);
+
+        for (i = 0; i < delta2.rows(); i++) {
+            for (j = 0; j < delta2.cols(); j++) {
+                delta2(i, j) = delta2(i, j) * a2(i, j) * (1 - a2(i, j));
+            }
+        }
+
+        dwho = delta2 * a1.transpose();
+
+        //cal dwho
+        for (i = 0; i < delta1.rows(); i++) {
+            for (j = 0; j < delta1.cols(); j++) {
+                delta1(i, j) = delta1(i, j) * a1(i, j) * (1 - a1(i, j));
+            }
+        }
+
+        dwih = delta2 * dataM.transpose();
+
+        //adjust wih and who
+        for (i = 0; i < dwih.rows(); i++) {
+            for (j = 0; j < dwih.cols(); j++) {
+                wih(i, j) = wih(i, j) + dwih(i, j) * learnRate;
+            }
+        }
+        for (i = 0; i < dwho.rows(); i++) {
+            for (j = 0; j < dwho.cols(); j++) {
+                who(i, j) = who(i, j) + dwho(i, j) * learnRate;
+            }
+        }
+        printf("%f,%f ", wih(0, 0), who(0, 0));
+        return loss;
+    }
+};
+```
+
+用图纸创建了一个具体的训练者实体，告知待训练的神经网络结构以及学习率。
+``` C++
+
+trainer *t = new trainer(28 * 28, 200, 10, 0.05);
+
+```
+
+然后把我们之前封装好的训练集数据一个一个的交给训练者，让他一张一张的学习。
+这里的epochs代表着训练者需要把整个训练集学习几次。训练集就像一本画册，训练者一张一张读完一遍之后，害怕自己忘记，再多读一遍。巩固记忆，这里的epochs就是复习的次数。实验看下来不是复习次数越多越好的。这里选择复习两次就好。
+``` C++
+for (tim = 0; tim < epochs; tim++) {
+    for (i = 0; i < train_image->image_number; i++) {
+        printf("loss=%lf %d/%d(%d)\r\n", t->train(train_image->get_pic(i), train_label->get_label(i)), i, train_image->image_number, tim);
+    }
+}
+```
+
 ### 步骤4，用测试集查看模型准确性
+
+
+学习完成之后，通过测试集给训练者做一次期末考试，给他一个它之前从未见过的新图片，它猜出这个值是多少，然后对比下是否和正确答案一致，如果一致则加分，否则不加分。
+
+``` C++
+uint32_t right_num = 0;
+for (i = 0; i < test_image->image_number; i++) {
+    label = *test_label->get_label(i);
+    forcast = t->forecast(test_image->get_pic(i));
+    if (label == forcast) {
+        right_num++;
+    } else {
+        printf("correct = %d , forecast = %d error\r\n", label, forcast);
+    }
+}
+```
+
+**最终输出的结果是**
+
+```
+correct = 8699 , error = 1301 rate = 0.869900
+```
+总共10000个测试数据，模型正确了86%左右。
+
+## 4 结果分析
+
+再python环境下，使用numpy库以及完全相同的算法，我得到的准确率是在96%左右，非常高，但是为什么C++环境下准确率下降了呢？
+
+我一直在查找算法中存在的问题，但是最终还是没有找到实现上的问题，而且其他和我有一样经历的博主用C++实现出来也是88%左右的识别率。因此也增强了我对实现上没问题的信心。
+
+后来想到，很大可能是C++浮点数据结构的精度决定的。Python环境默认的数据精度是float64,C++使用的是double数据类型。
+
+通过查阅资料发现python的浮点数最大精度是支持到17位[最大精度是支持到17位](https://www.cnblogs.com/herbert/p/3402245.html)而C++的double类型[最大精度仅支持到16位](https://blog.csdn.net/black_kyatu/article/details/79257346)。
+
+因此，理解到很大可能是最底层的计算精度影响了python环境与C++环境在相同算法上的识别率。
+
+这个问题存档，后期再做卷积神经网络相关的实验的时候进一步验证此猜想。
+
+**如果您有问题的答案也请再评论区告诉笔者。**
+
+# 5 嵌入式平台移植
+
+RISC-V是一个开源社区维护的CPU处理器架构，具体的信息可以看我之前的文章[用一段C代码编译的指令代码，来阐明RISC-V架构的简洁](https://zhuanlan.zhihu.com/p/237357630)等等。
+
+BL706是基于RISC-V处理器架构，由博流智能推出的的一款蓝牙、zigebee无线射频芯片。当然它也包含了各种常用的嵌入式外设（SPI I2C...等等）。
+
+感兴趣的朋友可以到博流智能维护的[开源社区](https://gitee.com/bouffalolab/bl_mcu_sdk)了解更多。
+
+笔者在这个资源有限的平台上使用C/C++从最底层实现了字迹识别的功能。
+
+## 硬件准备
+
+一块博流智能推出的bl706_AVB开发板
+
+![avatar](pic/6.png)
+
+一个常用的TFT屏幕
+
+![avatar](pic/7.png)
+
+## 总体流程与视频演示
+
+由于嵌入式平台的ROM空间有限，因此训练环节不能在嵌入式平台进行，所以训练环境在PC环节使用C++进行，将训练出的参数导出为.h头文件格式，给到嵌入式平台使用。
+
+使用SPI硬件控制器直接驱动TFT显示屏，读取液晶显示屏的输入结果，实现一个手写的功能，嵌入式设备将用户的手写轨迹记录在一个[28 * 8 , 28 * 8]的矩阵中。
+
+之后对手写轨迹的图片矩阵进行压缩，从[28 * 8 , 28 * 8]压缩为[28,28]。因为训练模型的图片大小是[28,28]，这个对于人来说太小了，写起来很小，因此总体目的是让用户写一个较大图片，然后后期压缩为模型可以输入的大小图片。
+
+压缩完成图片信息之后直接输入到已经训练好的神经网络，嵌入式设备完成识别，并打印在屏幕上。
+
+**视频如下**
+
+https://www.zhihu.com/zvideo/1456306513770319873
+
+**可以看到识别率还是非常高的**
+
+TinyAi的开源项目
+https://github.com/JingyanChen/TinyAi
